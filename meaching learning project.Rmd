@@ -1,0 +1,108 @@
+---
+title: "Machine learning project"
+author: "zouxia"
+date: "2016??3??26??"
+output: html_document
+---
+##preprocessing of the data
+```{r,results='hide',cache=TRUE,warning=FALSE}
+setwd("D:\\R programming\\meachine learning")
+trainingp<-read.csv("pml-training.csv",h=T)
+trainingt<-trainingp[1:10,]
+testing<-read.csv("pml-testing.csv",h=T)
+#dealing with Missing data. After observe the missing data, i found the all missing data are max min ...std. It means these data is calculate during a period of time, so there must be Missing data. So i come up with a method that substitute the missing data with it's lastest below data. The mothod is:
+na.lomf <- function(x) {
+  
+  na.lomf.0 <- function(x) {
+    non.na.idx <- which(!is.na(x))
+    non.na.idx<-c(0,non.na.idx)
+    as.numeric(rep.int(x[non.na.idx], diff(c(non.na.idx))))
+  }
+  
+  dim.len <- length(dim(x))
+  
+  if (dim.len == 0L) {
+    na.lomf.0(x)
+  } else {
+    apply(x, dim.len, na.lomf.0)
+  }
+}
+#then find out cols that have missing data
+numcol<-grep("kurtosis|skewness|max|min|ampli|var|std|avg", colnames(trainingp))
+trainingp[,numcol]<-apply(trainingp[,numcol],2,na.lomf)
+a<-which(!is.na(trainingt[1,numcol]))
+trainingp<-trainingp[,-numcol[a]]
+testing<-testing[,-numcol[a]]
+#Split the trainging data into validation data and training data
+library(caret)
+intrain<-createDataPartition(trainingp$classe,p=0.7,list=F)
+training<-trainingp[intrain,]
+valida<-trainingp[-intrain,]
+```
+After a clear examination of the variables,i found there are six aspects,(roll,pitch,yaw,raw accelerometer ,gyroscope and magnetometer readings. And for each aspects there are eight features,mean, variance,standard deviation, max, min, amplitude, kurtosis and skewness.
+
+##exploratory data analysis and variables selection
+```{r,results="hide",cache=TRUE,warning=F}
+summary(training)
+#Remove redudant variables. Remove variables that are highly correlated
+correlationmatrix<-cor(training[,-c(1:7,127)])
+highlycorrelated<-findCorrelation(correlationmatrix,cutoff = 0.75)
+trainingr<-training[,-(highlycorrelated+7)]
+validar<-valida[,-(highlycorrelated+7)]
+#it still have 71 variables. So i rank the variables by importance.
+#rankmodel<-train(classe~.,data=trainingr[(1:1000),-(1:7)],method="lvq",preProcess="scale",trControl=control)
+#importance<-varImp(rankmodel,scale=F)
+#Using automatic feature selection to select variables.
+control <- rfeControl(functions=rfFuncs, method="cv", number=10)
+samplenum<-sample(length(trainingr$classe),1000,replace = F)
+results <- rfe(trainingr[samplenum,-c(1:7,71)], trainingr[samplenum,71], rfeControl=control)
+#select 16 variables base on it
+trainings<-training[,results$optVariables[1:16]]
+```
+After the process of removing redundant variables and select variables via rfe . i choose 16 variables `r results$optVariables[1:16]`
+
+##Build Model on the training data
+```{r,warning=F,cache=TRUE}
+#First try random forest method
+model1<-train(classe~.,data=training[,c(results$optVariables[1:16],"classe")],method="rf",preProcess="scale")
+
+#test accuracy on the validation dataset
+accuracy1<-confusionMatrix(predict(model1,valida),valida$classe)
+accuracy1
+
+```
+As we can see the accuracy on the validation data set is quite high, so i adopt the random forest to build model.
+##dealing with Na in testing data set
+```{r}
+library(base)
+library(stats)
+testingo<-testing[colSums(!is.na(testing)) > 0]
+
+modelcolnames<-c("var_accel_dumbbell","var_roll_belt","min_roll_forearm","avg_roll_dumbbell","var_yaw_belt","avg_pitch_belt","avg_roll_forearm","var_accel_forearm","var_pitch_belt","avg_pitch_dumbbell","max_roll_arm","min_roll_dumbbell","var_accel_arm","var_pitch_dumbbell","var_roll_dumbbell" )
+
+datas<-data.frame(user_name=c("adelmo","carlitos","charles","eurico","jeremy","pedro"))
+for (i in (1:length(modelcolnames))){
+  a<-substr(modelcolnames[i],start = 1,stop = 3)
+  if (a=="avg"){
+    fun= "mean"
+  }else {fun=a}
+  b<-substr(modelcolnames[i],4,stop = nchar(modelcolnames[i]))
+  c<-agrep(b,colnames(testingo))[1]
+  datas<-cbind(datas,aggregate(.~user_name,data = testingo[,c(2,c)],FUN= fun))
+}
+datas<-subset(datas,select = -c(2,4,6,8,10,12,14,16,18,20,22,24,26,28,30))
+colnames(datas)[2:16]<-modelcolnames
+testingw<-merge(testing[,c(1:7)],datas,by="user_name",all=T)
+testingw<-cbind(testingw,magnet_dumbbell_z=testing$magnet_dumbbell_z)
+
+```
+##predict with testing dataset
+```{r}
+#predicttest<-predict(model1,testingw)
+#predicttest
+#result
+#> predicttest
+# [1] A A A A A A A E E E E E E E E E E E
+#Levels: A B C D E
+#The predict doesn't work in the R markdown, But it works in my Rstduio. So i put the result of my prediction there.
+```
