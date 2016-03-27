@@ -32,7 +32,6 @@ na.lomf <- function(x) {
 #then find out cols that have missing data
 numcol<-grep("kurtosis|skewness|max|min|ampli|var|std|avg", colnames(trainingp))
 trainingp[,numcol]<-apply(trainingp[,numcol],2,na.lomf)
-testing[,numcol]<-apply(testing[,numcol],2,na.lomf)
 a<-which(!is.na(trainingt[1,numcol]))
 trainingp<-trainingp[,-numcol[a]]
 testing<-testing[,-numcol[a]]
@@ -68,17 +67,35 @@ After the process of removing redudant variables and select variables via rfe . 
 ```{r,warning=F,cache=TRUE}
 #First try random forest method
 model1<-train(classe~.,data=training[,c(results$optVariables,"classe")],method="rf",preProcess="scale")
-library(adabag)
-model2<-train(classe~.,data=training[,c(results$optVariables,"classe")],method="AdaBag",preProcess="scale")
+
 #test accuracy on the validation dataset
 accuracy1<-confusionMatrix(predict(model1,valida),valida$classe)
-accuracy2<-confusionMatrix(predict(model2,valida),valida$classe)
+accuracy1
 
 ```
-
-
+As we can see the accuracy on the validation data set is quite high, so i adopt the random forest to build model.
+##dealing with Na in testing data set
+```{r}
+testingo<-testing[colSums(!is.na(df)) > 0]
+modelcolnames<-results$optVariables[-7]
+datas<-data.frame(user_name=c("adelmo","carlitos","charles","eurico","jeremy","pedro"))
+for (i in (1:length(modelcolnames))){
+  a<-substr(modelcolnames[i],1,stop = 3)
+  if (a=="avg"){
+    fun='mean'
+  }else {fun=a}
+  b<-substr(modelcolnames[i],4,stop = nchar(modelcolnames[i]))
+  c<-agrep(b,colnames(testingo))[1]
+  datas<-cbind(datas,aggregate(.~user_name,data = testingo[,c(2,c)],FUN=fun))
+}
+datas<-subset(datas,select = -c(2,4,6,8,10,12,14,16,18,20,22,24,26,28,30))
+colnames(datas)[2:16]<-modelcolnames
+testingw<-merge(testing[,c(1:7)],datas,by="user_name",all=T)
+testingw<-cbind(testingw,magnet_dumbbell_z=testing$magnet_dumbbell_z)
+```
 ##predict with testing dataset
 ```{r}
-predicttest<-predict(model1,testing)
+predicttest<-predict(model1,testingw)
 predicttest
 ```
+
